@@ -725,7 +725,7 @@ async function sendOrder(){
   btn.textContent="Yuborilmoqda...";btn.disabled=true;
   const payload={name,phone,grade,volume,address,date,time,price,total,timestamp:new Date().toISOString(),source:'mirbeton_v3'};
   try{
-    if(POST_URL==='https://script.google.com/macros/s/AKfycbwlMwXb2SSIxCeYN7sajdozfa6isdMafP5bqnA9n8FZulDpKVo_Zf_7rtjPc-trsK6sqg/exec')throw new Error('demo');
+    if(POST_URL==='https://script.google.com/macros/s/AKfycbwm5kXf9WHgWjKefxXGxV5NP_K2vqMuICth1ZCT8PFf6U2CwinJxjlrHjpkjNs_H7sDOg/exec')throw new Error('demo');
     const resp=await fetch(POST_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     let res={};try{res=await resp.json();}catch{}
     if(res.success||resp.ok)showModal(true);else showModal(false,"Server xatoligi. Qayta urinib ko'ring.");
