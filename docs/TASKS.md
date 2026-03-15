@@ -36,8 +36,8 @@
 
 ## Backend/Frontend yetishmayotgan qismlar (tahlil natijasi)
 
-- **API yo'q:** `GET /api/prices`, `POST /api/order` — landing (index.html) bularga tayanadi; hozir barcha `/api/*` `index.py` ga boradi, lekin bu route'lar `index.py` da yo'q.
-- **API yo'q:** `GET /api/sales/clients`, `POST /api/orders/upsert` — sales.html ishlashi uchun kerak.
+- ~~**API yo'q:** `GET /api/prices`, `POST /api/order`~~ — **Cursor-06 da qo'shildi** (api/routes/landing.py).
+- ~~**API yo'q:** `GET /api/sales/clients`, `POST /api/orders/upsert`~~ — **Cursor-06 da qo'shildi** (api/routes/sales.py).
 - **Admin:** `admin.html` — statistika va foydalanuvchi boshqaruvi bo'sh (JS/API ulanmagan).
 - **Driver/Prod_ops:** `trip_id`, buyurtma ma'lumotlari hardcoded (1, #MB-2603-01); real ro'yxat va API dan kelishi kerak.
 - **Auth:** Har bir API da `user_id` va rol tekshiruvi (RLS yoki backend) hali to'liq qo'llanmagan.
