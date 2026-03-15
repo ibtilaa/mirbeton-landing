@@ -1,0 +1,28 @@
+# MirBeton ERP — Cursor qoidalari
+
+## Loyiha
+- ERP: Telegram Bot (Aiogram) + Mini App (MPA). Backend: FastAPI, DB: Supabase, Hosting: Vercel.
+- Kontekst: `docs/cursor_contex.md`. Reja: `docs/PLAN.md`. Eski task ro'yxati: `docs/TASKS.md`.
+
+## O'zgartirish MUMKIN EMAS
+- `index.html`, `api/order.js`, `api/prices.js` — biznesning landing va narx/buyurtma lead moduli; mazmunini o'zgartirma. Faqat backend orqali xizmat ko'rsatish (masalan `/api/prices`, `/api/order`).
+
+## Kod: modulli va tartibli
+- Kodlarni modulli, tartibli yozish kerak. Backend: `api/config.py`, `api/routes/*.py`, `api/bot_handlers.py`, `api/index.py` (faqat app yig‘ish va router ulash). Yangi mantiqni `index.py` ga yig‘ib yozmaslik; kerak bo‘lgan joyda `api/routes/`, `api/services/` kabi modullardan foydalanish.
+
+## Tasklar va notelar
+- Barcha tasklar bitta rejada: `docs/PLAN.md`. Ketma-ketlik bo‘yicha bitta-bitta bajarish ma’qul.
+- Har bajarilgan taskdan keyin: `docs/PLAN.md` da shu task oldidagi `[ ]` ni `[X]` qilib qo‘yish kerak.
+- Har task bo‘yicha qisqa note yozish kerak: `docs/notes/<task_id>_note.md` (masalan `Cursor-06_note.md`) — qaysi task, nima qilindi.
+
+## Qilish KERAK
+- Har bir API da foydalanuvchi identifikatsiyasi va rol tekshiruvi (Supabase/users orqali). URL/body dan keladigan `user_id` ni ishonib ishlatma, rolni tekshir.
+- Xato qaytarishda foydalanuvchiga raw traceback ko‘rsatma; bitta tushunarli xabar yoki `{"error": "..."}`.
+- Vercel Serverless: 10s timeout, uzoq operatsiyalar va long-polling dan qochish.
+
+## Dizayn
+- Faqat `public/` ostidagi HTML/JS/CSS ni frontend sifatida ishlatish. Design: Dark Industrial (qora, lime, slate); ixtiyoriy light theme.
+- Tailwind class'lar ishlatiladigan sahifalarda Tailwind CDN ulangan bo‘lishi kerak (yoki style.css da ekvivalent qoidalar).
+
+## Til va format
+- Foydalanuvchi matnlari: o‘zbek (lotin). Kod va commit: ingliz yoki o‘zbek.

@@ -31,11 +31,16 @@
         const userId = new URLSearchParams(window.location.search).get('user_id');
 
         async function init() {
-            // Mijozlar ro'yxatini yuklash
-            const clients = await (await fetch('/api/sales/clients')).json();
-            document.getElementById('client_id').innerHTML = clients.map(c => 
-                `<option value="${c.id}">${c.full_name}</option>`
-            ).join('');
+            if (!userId) { document.getElementById('client_id').innerHTML = '<option value="">user_id yo\'q</option>'; return; }
+            const res = await fetch('/api/sales/clients?user_id=' + encodeURIComponent(userId));
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                document.getElementById('client_id').innerHTML = data.map(c =>
+                    `<option value="${c.id}">${c.full_name || c.phone || c.id}</option>`
+                ).join('') || '<option value="">Mijoz yo\'q</option>';
+            } else {
+                document.getElementById('client_id').innerHTML = '<option value="">' + (data.error || 'Yuklanmadi') + '</option>';
+            }
             loadPending();
         }
 
@@ -49,11 +54,13 @@
                 user_id: userId,
                 role: 'sales'
             };
-            await fetch('/api/orders/upsert', { 
-                method:'POST', headers:{'Content-Type':'application/json'}, 
-                body:JSON.stringify(data) 
+            const res = await fetch('/api/orders/upsert', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify(data)
             });
-            tg.showConfirm("Saqlandi!");
+            const out = await res.json().catch(() => ({}));
+            if (out.error) { tg.showAlert(out.error); return; }
+            tg.showAlert("Saqlandi!");
             location.reload();
         }
 
