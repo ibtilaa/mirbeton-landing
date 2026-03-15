@@ -1,1 +1,6 @@
-
+fastapi
+uvicorn
+supabase
+aiogram
+httpx
+python-multipart
