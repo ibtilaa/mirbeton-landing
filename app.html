@@ -1,56 +1,105 @@
 <!DOCTYPE html>
-<html>
+<html lang="uz">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body { background: #0a0c09; color: #e2ead6; font-family: 'JetBrains Mono', monospace; }
+        .card { background: #121511; border: 1px solid #242a20; border-radius: 24px; }
+        .btn-primary { background: #9dc45a; color: #000; font-weight: 800; border-radius: 18px; transition: 0.2s; }
+        .btn-primary:active { transform: scale(0.95); }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    </style>
 </head>
-<body class="bg-slate-50 p-4">
-    <div id="view-driver" class="hidden space-y-4">
-        <div class="bg-white p-5 rounded-3xl shadow-sm border-l-8 border-blue-600">
-            <div class="text-xs font-bold text-slate-400">FAOL BUYURTMA</div>
-            <div id="order-id" class="text-2xl font-black italic italic uppercase tracking-tighter">Yuklanmoqda...</div>
-        </div>
-        <div class="grid grid-cols-1 gap-3">
-            <button onclick="sendEv('en_route')" class="py-6 bg-blue-600 text-white rounded-2xl font-bold text-xl">🚚 JO'NADIM</button>
-            <button onclick="sendEv('arrived')" class="py-6 bg-orange-500 text-white rounded-2xl font-bold text-xl">📍 MANZILDA</button>
-            <button onclick="sendEv('pouring')" class="py-6 bg-red-600 text-white rounded-2xl font-bold text-xl">🏗 BOSHLADIM</button>
-            <button onclick="sendEv('done')" class="py-6 bg-black text-white rounded-2xl font-bold text-xl">🏁 TUGATDIM</button>
-        </div>
-    </div>
+<body class="p-4">
+    <div id="app">
+        <header class="flex justify-between items-center mb-8">
+            <h1 style="font-family: 'Syne';" class="text-3xl font-black italic tracking-tighter text-lime-500 uppercase">MIRBETON</h1>
+            <div id="geo-indicator" class="text-[10px] text-slate-500 flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-slate-700" id="geo-dot"></div> GPS
+            </div>
+        </header>
 
-    <div id="view-client" class="hidden space-y-4 text-center py-20">
-        <div class="text-6xl mb-4">📦</div>
-        <h1 class="text-2xl font-black">Buyurtmalaringiz yo'lda!</h1>
-        <p class="text-slate-400">Bot orqali xabarlarni kuzatib boring.</p>
+        <div id="view-prices" class="hidden space-y-3">
+            <h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Marka va Narxlar</h2>
+            <div id="price-list" class="space-y-2"></div>
+        </div>
+
+        <div id="view-driver" class="hidden space-y-4">
+            <div class="card p-5 border-l-4 border-lime-500 mb-6">
+                <div class="text-[10px] text-lime-500 font-bold mb-1 uppercase">Active Job</div>
+                <div class="text-2xl font-black italic tracking-tight" id="d-order-id">MB-4401</div>
+                <div class="text-xs text-slate-500 mt-2" id="d-order-addr">📍 Manzilni aniqlash uchun bosing...</div>
+            </div>
+            <div class="grid grid-cols-1 gap-3">
+                <button onclick="sendEv('en_route')" class="btn-primary py-6 text-xl italic">🚚 JO'NADIM</button>
+                <button onclick="sendEv('arrived')" class="btn-primary py-6 text-xl italic bg-orange-500">📍 MANZILDA</button>
+                <button onclick="sendEv('pouring')" class="btn-primary py-6 text-xl italic bg-red-600">🏗 BOSHLADIM</button>
+                <button onclick="sendEv('done')" class="btn-primary py-6 text-xl italic bg-black text-white border border-slate-800">🏁 TUGATDIM</button>
+            </div>
+        </div>
+
+        <footer class="fixed bottom-6 left-4 right-4">
+            <button onclick="getLoc()" class="w-full card p-4 flex items-center justify-center gap-3 active:bg-slate-800 transition">
+                <i class="fas fa-location-arrow text-lime-500"></i>
+                <span class="text-[10px] font-bold uppercase tracking-widest" id="geo-btn-text">Manzilni aniqlash</span>
+            </button>
+        </footer>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         const params = new URLSearchParams(window.location.search);
-        const role = params.get('role');
-        const userId = params.get('user_id');
+        const role = params.get('role') || 'prices';
+        let coords = { lat: null, lng: null };
 
-        // Test uchun doimiy order_id. Realda buni API orqali olish kerak.
-        let currentOrderId = "MB-2603-TEST"; 
+        tg.expand();
+        tg.ready();
 
         window.onload = () => {
             document.getElementById('view-' + role).classList.remove('hidden');
-            document.getElementById('order-id').innerText = currentOrderId;
-            tg.expand();
+            if(role === 'prices') loadPrices();
         };
 
+        async function getLoc() {
+            document.getElementById('geo-btn-text').innerText = "ANIQLANMOQDA...";
+            navigator.geolocation.getCurrentPosition(async (p) => {
+                coords = { lat: p.coords.latitude, lng: p.coords.longitude };
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${coords.lat}&lon=${coords.lng}&format=json`);
+                const data = await res.json();
+                document.getElementById('geo-btn-text').innerText = "✅ ANIQLANDI";
+                document.getElementById('geo-dot').classList.replace('bg-slate-700', 'bg-lime-500');
+                if(document.getElementById('d-order-addr')) document.getElementById('d-order-addr').innerText = "📍 " + data.display_name;
+                tg.HapticFeedback.impactOccurred('heavy');
+            });
+        }
+
+        async function loadPrices() {
+            const res = await fetch('/api/prices');
+            const data = await res.json();
+            document.getElementById('price-list').innerHTML = data.map(i => `
+                <div class="card p-4 flex justify-between items-center border-slate-800/50">
+                    <span class="font-bold text-lg">${i.Marka}</span>
+                    <span class="text-lime-500 font-bold">${parseInt(i.Narx).toLocaleString()}</span>
+                </div>
+            `).join('');
+        }
+
         async function sendEv(step) {
-            tg.HapticFeedback.notificationOccurred('success');
+            tg.MainButton.showProgress();
             const res = await fetch('/api/driver-event', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ order_id: currentOrderId, step: step, user_id: userId })
+                body: JSON.stringify({ order_id: "MB-4401", step, ...coords })
             });
-            if(res.ok) tg.showScanQrPopup({ text: "Muvaffaqiyatli: " + step.toUpperCase() });
-            setTimeout(() => tg.closeScanQrPopup(), 1000);
+            if(res.ok) {
+                tg.HapticFeedback.notificationOccurred('success');
+                tg.close();
+            }
         }
     </script>
 </body>
