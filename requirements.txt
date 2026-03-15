@@ -4,3 +4,4 @@ supabase
 aiogram
 httpx
 python-multipart
+python-dateutil
