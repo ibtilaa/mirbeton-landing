@@ -1,83 +1,101 @@
-import os, re, logging, httpx, csv
-from fastapi import FastAPI, Request, HTTPException
+import os
+import re
+import math
+import logging
+import httpx
+import csv
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import FastAPI, Request, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import Update, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.filters import Command, CommandObject
+from aiogram.types import (
+    Update, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+)
 from supabase import create_client, Client
-from datetime import datetime
 
-# LOGGING
+# --- LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# CONFIG
+# --- CONFIGURATION ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SITE_URL = os.getenv("SITE_URL")
 CSV_URL = os.getenv("GOOGLE_SHEETS_CSV_URL")
 
-# INIT
+# --- INITIALIZATION ---
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 app = FastAPI()
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# --- BOT MANTIQI ---
+# --- UTILS ---
+MAX_MIXER_M3 = 10.0
 
-@dp.message(F.text == "/start")
+async def get_user_by_tg_id(tg_id: int):
+    res = supabase.table("users").select("*").eq("tg_id", tg_id).execute()
+    return res.data[0] if res.data else None
+
+# --- BOT HANDLERS ---
+
+@dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     tg_id = message.from_user.id
-    # Xavfsiz qidiruv: .single() o'rniga .execute() ishlatamiz
-    res = supabase.table("users").select("*").eq("tg_id", tg_id).execute()
-    user = res.data[0] if res.data else None
+    user = await get_user_by_tg_id(tg_id)
 
     # 1. Ro'yxatdan o'tmagan bo'lsa
     if not user:
         kb = [[KeyboardButton(text="📱 Kontaktni ulash", request_contact=True)]]
         markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
         return await message.answer(
-            "<b>MirBeton tizimiga xush kelibsiz!</b>\n\nDavom etish uchun telefon raqamingizni yuboring:", 
+            "<b>MirBeton ERP tizimiga xush kelibsiz!</b>\n\nDavom etish uchun telefon raqamingizni yuboring:", 
             reply_markup=markup, parse_mode="HTML"
         )
     
-    # 2. Kontakt bor, lekin 2-raqam yo'q bo'lsa
+    # 2. Ikkinchi raqam so'rash
     if not user.get("secondary_phone"):
-        kb = [
-            [KeyboardButton(text="📱 Telegram raqam bilan bir xil")],
-            [KeyboardButton(text="❌ Qo'shimcha raqam yo'q")]
-        ]
+        kb = [[KeyboardButton(text="📱 Telegram raqam bilan bir xil")], [KeyboardButton(text="❌ Qo'shimcha raqam yo'q")]]
         markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
         return await message.answer(
-            "<b>Ma'lumotlar saqlandi!</b>\nEndi doimiy aloqa uchun ikkinchi raqamingizni yozing (masalan: 901234567) yoki tanlang:", 
+            "<b>Ma'lumotlar saqlandi!</b>\nEndi qo'shimcha bog'lanish raqamingizni yuboring (masalan: 901234567) yoki tanlang:", 
             reply_markup=markup, parse_mode="HTML"
         )
 
-    # 3. Hamma ma'lumotlar joyida bo'lsa - ASOSIY MENYU
+    # 3. Asosiy Menyu (Role-based)
     role = user['role']
     app_url = f"{SITE_URL}/app.html?role={role}&user_id={user['id']}"
     
-    btn_text = "📦 Buyurtmalarim"
-    if role == 'admin': btn_text = "⚙️ Admin Panel"
-    elif role == 'driver': btn_text = "🚚 Haydovchi Paneli"
-    elif role == 'sales': btn_text = "📊 Sotuv Bo'limi"
+    btn_text = "📦 BUYURTMALARIM"
+    if role == 'admin': btn_text = "⚙️ ADMIN PANEL"
+    elif role == 'driver': btn_text = "🚚 HAYDOVCHI PANELI"
+    elif role == 'sales': btn_text = "📊 SOTUV BO'LIMI"
+    elif role == 'prod_ops': btn_text = "🏭 ISHLAB CHIQARISH"
 
     kb = [
         [KeyboardButton(text=btn_text, web_app=WebAppInfo(url=app_url))],
-        [KeyboardButton(text="📊 Narxlar", web_app=WebAppInfo(url=f"{SITE_URL}/app.html?role=prices"))]
+        [KeyboardButton(text="📊 NARXLAR", web_app=WebAppInfo(url=f"{SITE_URL}/app.html?role=prices"))]
     ]
     await message.answer(
-        f"<b>Asosiy Menyu</b>\n\nSizning rolingiz: <code>{role.upper()}</code>", 
+        f"<b>Sizning rolingiz:</b> <code>{role.upper()}</code>\nQuyidagi tugma orqali tizimga kiring:", 
         reply_markup=ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True), 
         parse_mode="HTML"
     )
 
 @dp.message(F.contact)
 async def handle_contact(message: types.Message):
-    phone = message.contact.phone_number
-    if not phone.startswith('+'): phone = '+' + phone
+    phone = "+" + message.contact.phone_number.replace("+", "")
     supabase.table("users").upsert({
         "tg_id": message.from_user.id, 
         "full_name": message.from_user.full_name, 
@@ -87,32 +105,21 @@ async def handle_contact(message: types.Message):
     await cmd_start(message)
 
 @dp.message(lambda m: not m.text.startswith('/'))
-async def handle_text_inputs(message: types.Message):
-    tg_id = message.from_user.id
-    text = message.text.strip()
-    
-    res = supabase.table("users").select("*").eq("tg_id", tg_id).execute()
-    user = res.data[0] if res.data else None
-    
+async def handle_secondary_phone(message: types.Message):
+    user = await get_user_by_tg_id(message.from_user.id)
     if user and not user.get("secondary_phone"):
-        final_phone = ""
-        if "bir xil" in text.lower():
-            final_phone = user['phone']
-        elif "yo'q" in text.lower():
-            final_phone = "none"
-        else:
-            # Raqamlarni tozalash va formatlash
-            clean = re.sub(r'\D', '', text)
-            if len(clean) == 9: final_phone = "+998" + clean
-            elif len(clean) == 12 and clean.startswith("998"): final_phone = "+" + clean
-            else:
-                return await message.answer("⚠️ <b>Xato!</b> Iltimos, raqamni 901234567 ko'rinishida yozing:")
+        text = message.text.strip()
+        final_phone = user['phone'] if "bir xil" in text.lower() else ("none" if "yo'q" in text.lower() else text)
         
-        supabase.table("users").update({"secondary_phone": final_phone}).eq("tg_id", tg_id).execute()
-        await message.answer("✅ <b>Muvaffaqiyatli saqlandi!</b>")
-        return await cmd_start(message) # Menyuni chiqarish uchun qaytamiz
+        if final_phone != "none" and not "bir xil" in text.lower():
+            clean = re.sub(r'\D', '', final_phone)
+            if len(clean) == 9: final_phone = "+998" + clean
+            elif len(clean) == 12: final_phone = "+" + clean
+            else: return await message.answer("⚠️ Raqam noto'g'ri. Masalan: 901234567")
 
-    await cmd_start(message)
+        supabase.table("users").update({"secondary_phone": final_phone}).eq("tg_id", message.from_user.id).execute()
+        await message.answer("✅ Muvaffaqiyatli saqlandi!")
+        await cmd_start(message)
 
 # --- API ROUTES ---
 
@@ -124,8 +131,8 @@ async def webhook(request: Request):
         await dp.feed_update(bot=bot, update=update)
         return {"ok": True}
     except Exception as e:
-        logger.error(f"Error: {e}")
-        return {"ok": True} # Telegram qayta yubormasligi uchun True qaytaramiz
+        logger.error(f"Webhook error: {e}")
+        return {"ok": True}
 
 @app.get("/api/prices")
 async def get_prices():
@@ -133,22 +140,96 @@ async def get_prices():
         r = await client.get(CSV_URL)
         return list(csv.DictReader(r.text.splitlines()))
 
-@app.post("/api/admin/set-role")
-async def set_role(request: Request):
-    d = await request.json()
-    # Faqat adminligini tekshirish
-    check = supabase.table("users").select("role").eq("id", d['admin_id']).single().execute()
-    if check.data['role'] != 'admin': return {"error": "No access"}
-    
-    supabase.table("users").update({"role": d['role']}).eq("id", d['target_id']).execute()
-    return {"ok": True}
+# --- SALES & ORDERS ---
 
-@app.get("/api/admin/data")
-async def admin_data(user_id: str):
-    res = supabase.table("users").select("role").eq("id", user_id).single().execute()
-    if res.data['role'] != 'admin': return {"error": "No access"}
+@app.post("/api/sales/create-order")
+async def create_order(data: dict = Body(...)):
+    # 1. ID Generatsiya: MB-2603-001
+    now = datetime.now()
+    date_code = now.strftime("%d%m")
+    res_count = supabase.table("orders").select("id").ilike("id", f"MB-{date_code}-%").execute()
+    order_id = f"MB-{date_code}-{str(len(res_count.data) + 1).zfill(3)}"
+
+    total_amount = int(float(data['volume']) * int(data['price_per_m3']))
     
-    users = supabase.table("users").select("*").execute()
-    orders = supabase.table("orders").select("*, client_id(full_name)").execute()
-    return {"users": users.data, "orders": orders.data}
+    # 2. Buyurtmani yaratish
+    supabase.table("orders").insert({
+        "id": order_id,
+        "client_id": data['client_id'],
+        "grade": data['grade'],
+        "volume": data['volume'],
+        "address": data['address'],
+        "price_per_m3": data['price_per_m3'],
+        "total_amount": total_amount,
+        "status": "pending"
+    }).execute()
+
+    # 3. Multi-trip Split (10m3 dan bo'lish)
+    total_vol = float(data['volume'])
+    trips_count = math.ceil(total_vol / MAX_MIXER_M3)
+    for i in range(trips_count):
+        m3 = min(MAX_MIXER_M3, total_vol - (i * MAX_MIXER_M3))
+        supabase.table("order_trips").insert({
+            "order_id": order_id, "m3": m3, "status": "pending"
+        }).execute()
+        
+    return {"success": True, "order_id": order_id}
+
+@app.get("/api/sales/clients")
+async def get_clients():
+    res = supabase.table("users").select("id, full_name, phone").eq("role", "client").execute()
+    return res.data
+
+# --- PROD OPS ---
+
+@app.post("/api/prod/pour")
+async def prod_pour(data: dict = Body(...)):
+    trip_id = data['trip_id']
+    driver_id = data['driver_id']
     
+    # Status: poured (quyildi)
+    supabase.table("order_trips").update({
+        "status": "poured", 
+        "driver_id": driver_id, 
+        "poured_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", trip_id).execute()
+    
+    # Haydovchiga xabar
+    driver = supabase.table("users").select("tg_id").eq("id", driver_id).single().execute()
+    await bot.send_message(driver.data['tg_id'], f"✅ <b>Beton tayyor!</b>\nReys #{trip_id} yuklandi. Yo'lga chiqishingiz mumkin.", parse_mode="HTML")
+    return {"success": True}
+
+# --- DRIVER & GPS ---
+
+@app.post("/api/driver/event")
+async def driver_event(data: dict = Body(...)):
+    trip_id = data['trip_id']
+    event = data['event'] # 'en_route', 'arrived', 'pouring', 'completed'
+    
+    fields = {
+        "en_route": "departed_at",
+        "arrived": "arrived_at",
+        "completed": "completed_at"
+    }
+    
+    update_data = {
+        "status": event,
+        "last_lat": data.get('lat'),
+        "last_lng": data.get('lng')
+    }
+    if event in fields:
+        update_data[fields[event]] = datetime.now(timezone.utc).isoformat()
+
+    # Log yozish
+    supabase.table("order_logs").insert({
+        "order_id": data.get('order_id'),
+        "event_type": event,
+        "location_lat": data.get('lat'),
+        "location_lng": data.get('lng')
+    }).execute()
+
+    supabase.table("order_trips").update(update_data).eq("id", trip_id).execute()
+
+    # Mijozga bildirishnoma
+    trip_res = supabase.table("order_trips").select("*, orders(client_id)").eq("id", trip_id).single().execute()
+    client = supabase.table("users").select("tg_id").eq("id", trip_res.data['orders']['client_id']).
